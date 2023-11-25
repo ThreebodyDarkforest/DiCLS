@@ -1,0 +1,1 @@
+from torchvision.models.swin_transformer import SwinTransformer
