@@ -34,7 +34,7 @@ def train(cfg, model, dataloader, start_time=None, writer=None, step=None):
         captions = get_caption(ids, idx2label, infos)
         #captions = ["All:" + all_labels + ",Detect:" + captions[i] + ",Description: green, leaf, disease" for i in range(bz)]
         #captions = ["Detect:" + captions[i] for i in range(bz)]
-        captions = ["[CLS] " + all_labels + "[SEP] Description: green, leaf, disease" for i in range(bz)]
+        captions = ["All: " + all_labels + "[SEP] Description: green, leaf, disease" for i in range(bz)]
     
         with torch.no_grad():
             tokens = model.tokenizer(
@@ -93,7 +93,7 @@ def test(cfg, model, dataloader, idx2label, test=False):
             
             #captions = get_caption(ids, idx2label, infos)
             #captions = [captions[i] for i in range(bz)]
-            captions = ["[CLS] " + ",".join([label for label in idx2label.values()]) + "[SEP] Description: green,leaf,disease"] * bz
+            captions = ["All: " + ",".join([label for label in idx2label.values()]) + "[SEP] Description: green,leaf,disease"] * bz
 
             tokens = model.tokenizer(
                 captions,

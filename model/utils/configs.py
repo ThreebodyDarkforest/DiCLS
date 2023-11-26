@@ -105,7 +105,7 @@ class Config(BaseModel):
     loss: Loss = Loss()
     eval: Test = Test()
 
-    feature_depth: int = 2
+    feature_depth: int = 1
     tokenizer_max_length: int = 197
 
     local_hidden_dim: int = 768
