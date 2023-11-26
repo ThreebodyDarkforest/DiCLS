@@ -337,7 +337,6 @@ class BertEncoderLayer(BertPreTrainedModel):
         self.intermediate = BertIntermediate(config)
         self.output = BertOutput(config)
         self.gate = nn.Parameter(torch.zeros(1, 1, config.hidden_size))
-        self.act_fn = nn.GELU()
 
         trunc_normal_(self.gate, std=.02)
 
@@ -367,7 +366,7 @@ class BertEncoderLayer(BertPreTrainedModel):
         outputs = (layer_output,) + outputs
         hidden_states = outputs[0]
 
-        hidden_states = self.act_fn(hidden_states + torch.tanh(self.gate))
+        hidden_states = hidden_states + torch.tanh(self.gate)
         last_attn_pt = outputs[1][:, :, 0, 1:].mean(dim=1)
 
         language_dict_features = {

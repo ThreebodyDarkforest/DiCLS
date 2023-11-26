@@ -46,7 +46,7 @@ def train(cfg, model, dataloader, idx2label, start_time=None, writer=None, step=
         #     )
 
         # TODO: move this to collect_fn
-        suffix = 'Description: green leaf with disease'
+        #suffix = 'Description: green leaf with disease'
         tokens, targets = get_caption(model.tokenizer, idx2label, 
                                       labels, None, None, cfg.tokenizer_max_length)
         targets = torch.Tensor(targets)
@@ -105,8 +105,12 @@ def test(cfg, model, dataloader, idx2label, test=False):
             
             #captions = get_caption(ids, idx2label, infos)
             #captions = [captions[i] for i in range(bz)]
-            # captions = [",".join([label for label in idx2label.values()]) + "[SEP] Description: green,leaf,disease"] * bz
+            #captions = ["All: " + ",".join([label for label in idx2label.values()]) + "[SEP] Description: green,leaf,disease"] * bz
 
+            #suffix = 'Description: green leaf with disease'
+            tokens, targets = get_caption(model.tokenizer, idx2label, 
+                                          labels, None, None, cfg.tokenizer_max_length)
+            
             # tokens = model.tokenizer(
             #     captions,
             #     return_tensors="pt",
@@ -115,13 +119,10 @@ def test(cfg, model, dataloader, idx2label, test=False):
             #     max_length=cfg.tokenizer_max_length,
             # )
 
-            suffix = 'Description: green leaf with disease'
-            tokens, targets = get_caption(model.tokenizer, idx2label, 
-                                          labels, None, None, cfg.tokenizer_max_length)
             targets = torch.Tensor(targets)
 
             inputs = (imgs.to(device), tokens.to(device))
-            labels = labels.float()
+            labels = labels.long()
 
             outputs, logits, probs = model(inputs)
             #print(labels[0], probs[0])

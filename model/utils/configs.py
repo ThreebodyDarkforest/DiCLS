@@ -84,9 +84,9 @@ class PrototypeConfig(BaseModel):
     weight: float = 0.1
 
 class AlignConfig(BaseModel):
-    p: float = 0.07
+    p: float = 0.03
 
-    weight: float = 1
+    weight: float = 0.1
 
 class Loss(BaseModel):
     focal_loss: FocalConfig = FocalConfig()
@@ -111,7 +111,7 @@ class Config(BaseModel):
     loss: Loss = Loss()
     eval: Test = Test()
 
-    feature_depth: int = 2
+    feature_depth: int = 1
     tokenizer_max_length: int = 197
 
     local_hidden_dim: int = 768
@@ -127,7 +127,7 @@ class Config(BaseModel):
     use_token_loss: bool = True
     use_proto_loss: bool = True
     use_contrasive_loss: bool = True
-    use_align_loss: bool = False
+    use_align_loss: bool = True
 
     one_hot: bool = True
 

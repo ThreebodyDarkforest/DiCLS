@@ -52,7 +52,7 @@ def get_caption(tokenizer, idx2label, targets=None,
     example: [1 0 0 1 0 0] -> ([0 0 1 0 1], [4342, 32, 23, 43, 454]) # maybe \"Detect: cat, dog\"
     Note that the lenght of the returned targets are fixed to \"max_length\"
     '''
-    caption = ",".join([x for x in idx2label.values()]).replace("_", " ")
+    caption = "All: " + ",".join([x for x in idx2label.values()]).replace("_", " ")
 
     if prefix:
         caption = prefix + '[SEP]' + caption

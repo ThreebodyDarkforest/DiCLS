@@ -7,7 +7,7 @@ from einops import rearrange
 from torch.nn.modules.module import Module
 import math
 
-__all__ = ['FocalLoss', 'ArcfaceLoss', 'TokenLoss', 'ContrasiveLoss', 'PrototypeLoss']
+__all__ = ['FocalLoss', 'ArcfaceLoss', 'TokenLoss', 'ContrasiveLoss', 'PrototypeLoss', 'AlignLoss']
 
 class LossEvaluator(nn.Module):
     def __init__(self, cfg) -> None:
@@ -254,6 +254,8 @@ class AlignLoss(AbstractLoss):
     
     def forward(self, word_emb, img_emb, targets, word_attn, mask):
         bz = word_attn.size(0)
+        length = torch.sum((mask[:, 1:] == 1)) // mask.size(0)
+
         mask = (mask == 0)[:, 1:]
         # (bz, 1, hidden_dim) @ (bz, word_num, hidden_dim)
         sim = (img_emb.unsqueeze(1) @ word_emb.transpose(-1, -2)) / self.p
@@ -278,9 +280,10 @@ class AlignLoss(AbstractLoss):
 
         #print(word_atten_weights[0])
         #print(sim[0])
+        #print(length)
 
         loss = torch.sum(F.binary_cross_entropy_with_logits(
-            sim, targets, reduction="none") * word_atten_weights) / bz
+            sim[:, :length], targets[:, :length], reduction="none") * word_atten_weights[:, :length]) / bz
         
         return loss
 
