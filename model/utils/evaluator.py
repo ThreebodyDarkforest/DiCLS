@@ -22,7 +22,7 @@ def evaluate(logits: np.ndarray, targets: np.ndarray,
              roc_curve_on=False):
     
     results = {"num_classes": num_classes}
-    y_true_binary = label_binarize(targets, classes=list(range(num_classes)))
+    y_true_binary = label_binarize(targets, classes=list(range(targets.shape[-1])))
 
     y_pred_binary = (logits >= threshold).astype(int)
     accuracy = accuracy_score(targets, y_pred_binary)

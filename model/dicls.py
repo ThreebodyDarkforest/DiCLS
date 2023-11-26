@@ -7,7 +7,8 @@ from .utils.loss import (
     ArcfaceLoss,
     TokenLoss,
     ContrasiveLoss,
-    PrototypeLoss
+    PrototypeLoss,
+    AlignLoss
 )
 from .backbone import LocalEmbedding, GlobalEmbedding
 from .models import Mlp
@@ -46,11 +47,11 @@ class DiCLS(nn.Module):
         self.glob_emb = GlobalEmbedding(cfg.fuse.embed_dim, \
                                         cfg.glob_hidden_dim, cfg.glob_output_dim)
         self.proto_proj = Mlp(cfg.glob_output_dim, out_features=cfg.prototypes)
-        self.arc_proj = nn.Linear(cfg.fuse.embed_dim, cfg.num_class)
+        self.arc_proj = nn.Linear(cfg.fuse.embed_dim, cfg.tokenizer_max_length)
 
-        self.head = nn.Linear(cfg.fuse.embed_dim, out_features=cfg.num_class)
+        #self.head = nn.Linear(cfg.fuse.embed_dim, out_features=cfg.num_class)
 
-        self.loss_evaluater = LossEvaluator()
+        self.loss_evaluater = LossEvaluator(cfg)
 
         # args_dict = self.cfg.loss.focal_loss.dict()
         # args_dict['one_hot'] = self.cfg.one_hot
@@ -123,8 +124,11 @@ class DiCLS(nn.Module):
         #fuse_feat = torch.cat((vis_feat[:, 0], lang_feat[:, 0]), dim=-1).squeeze(1)
 
         cls_feat = vis_feat[:, 0]
-        logits = self.head(cls_feat)
+        #logits = self.head(cls_feat)
         #logits_probs = logits.softmax(dim=-1)
+        #logits_probs = torch.sigmoid(logits)
+        logits = (img_emb.unsqueeze(1) @ word_emb.transpose(-1, -2)).squeeze(1) / self.cfg.loss.align_loss.p
+        logits[(mask == 0)[:, 1:].detach()] = float('-inf')
         logits_probs = torch.sigmoid(logits)
 
         with torch.no_grad():
@@ -156,7 +160,7 @@ class DiCLS(nn.Module):
             #self.loss_evaluater.add_loss(TokenLoss(**args_dict).to(device), inputs, args_dict['weight'])
 
             bz = lang_attn.size(0)
-            mask = (mask == 0)[:, 1:]
+            masks = (mask == 0)[:, 1:]
             
             atten_sim = torch.bmm(word_emb, patch_emb.permute(0, 2, 1))
             word_num = word_emb.size(1)
@@ -201,7 +205,7 @@ class DiCLS(nn.Module):
             if args_dict['bi_direction']:
                 atten_sim = torch.bmm(patch_emb, word_emb.permute(0, 2, 1))
                 patch_num = patch_emb.size(1)
-                atten_sim[mask.detach().unsqueeze(1).repeat(
+                atten_sim[masks.detach().unsqueeze(1).repeat(
                     1, patch_num, 1)] = float("-inf")
                 atten_scores = F.softmax(
                     atten_sim / args_dict['local_temperature'], dim=-1)  # bz, 196, 111
@@ -262,11 +266,18 @@ class DiCLS(nn.Module):
             
             inputs = (img_proto_out, report_proto_out)
             self.loss_evaluater.add_loss(PrototypeLoss(**args_dict).to(device), inputs, args_dict['weight'])
+        
+        if self.cfg.use_align_loss:
+            args_dict = self.cfg.loss.align_loss.dict()
+
+            inputs = (word_emb, img_emb, targets[:, 1:], lang_attn, mask)
+            self.loss_evaluater.add_loss(AlignLoss(**args_dict).to(device), inputs, args_dict['weight'])
+
 
         args_dict = self.cfg.loss.focal_loss.dict()
         args_dict['one_hot'] = self.cfg.one_hot
         
-        inputs = (logits_probs, targets)
+        inputs = (logits_probs, targets[:, 1:])
         self.loss_evaluater.add_loss(FocalLoss(**args_dict).to(device), inputs, args_dict['weight'])
             
         losses = self.loss_evaluater()

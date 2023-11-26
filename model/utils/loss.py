@@ -10,10 +10,11 @@ import math
 __all__ = ['FocalLoss', 'ArcfaceLoss', 'TokenLoss', 'ContrasiveLoss', 'PrototypeLoss']
 
 class LossEvaluator(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, cfg) -> None:
         super().__init__()
         self.args_list = []
         self.losses_fn = nn.ModuleList()
+        # TODO: init loss module
 
     def add_loss(self, loss_fn: nn.Module, 
                  inputs: List[Any] | Tuple[Any], scale: int = 1):
@@ -214,6 +215,43 @@ class ContrasiveLoss(AbstractLoss):
         loss2 = F.cross_entropy(sim2, targets)
 
         return (loss1 + loss2) / 2.
+    
+class AlignLoss(AbstractLoss):
+    def __init__(self, p, **kwargs) -> None:
+        super().__init__()
+        self.p = p
+    
+    def forward(self, word_emb, img_emb, targets, word_attn, mask):
+        bz = word_attn.size(0)
+        mask = (mask == 0)[:, 1:]
+        # (bz, 1, hidden_dim) @ (bz, word_num, hidden_dim)
+        sim = (img_emb.unsqueeze(1) @ word_emb.transpose(-1, -2)) / self.p
+        sim = sim.squeeze(1)
+        
+        sim[mask.detach()] = float("-inf")
+        sim = torch.sigmoid(sim)
+
+        with torch.no_grad():
+            atten_weights = word_attn.detach()
+            word_atten_weights = []
+            for i in range(bz):
+                atten_weight = atten_weights[i]
+                nonzero = atten_weight.nonzero().squeeze()
+                low = torch.quantile(atten_weight[nonzero], 0.1)
+                high = torch.quantile(atten_weight[nonzero], 0.9)
+                atten_weight[nonzero] = atten_weight[nonzero].clip(low, high)
+                word_atten_weights.append(atten_weight.clone())
+            word_atten_weights = torch.stack(word_atten_weights)
+        
+        word_atten_weights /= word_atten_weights.sum(dim=1, keepdims=True)
+
+        #print(word_atten_weights[0])
+        #print(sim[0])
+
+        loss = torch.sum(F.binary_cross_entropy_with_logits(
+            sim, targets, reduction="none") * word_atten_weights) / bz
+        
+        return loss
 
 class PrototypeLoss(AbstractLoss):
     def __init__(self, epsilon=0.05, sinkhorn_iterations=3, 

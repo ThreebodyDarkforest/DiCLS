@@ -337,6 +337,7 @@ class BertEncoderLayer(BertPreTrainedModel):
         self.intermediate = BertIntermediate(config)
         self.output = BertOutput(config)
         self.gate = nn.Parameter(torch.zeros(1, 1, config.hidden_size))
+        self.act_fn = nn.GELU()
 
         trunc_normal_(self.gate, std=.02)
 
@@ -366,7 +367,7 @@ class BertEncoderLayer(BertPreTrainedModel):
         outputs = (layer_output,) + outputs
         hidden_states = outputs[0]
 
-        hidden_states = hidden_states + torch.tanh(self.gate)
+        hidden_states = self.act_fn(hidden_states + torch.tanh(self.gate))
         last_attn_pt = outputs[1][:, :, 0, 1:].mean(dim=1)
 
         language_dict_features = {
@@ -404,6 +405,7 @@ class VisionEncoderLayer(nn.Module):
         self.encoder = VanBlock(self.embed_dim, drop_path = self.droppath) if use_van_attn else \
                        Block(self.embed_dim, self.num_heads, drop_path = self.droppath)
         self.gate = nn.Parameter(torch.zeros(1, 1, self.embed_dim))
+        self.act_fn = nn.GELU()
         self.dropout = nn.Dropout(self.dropout)
         
         trunc_normal_(self.gate, std=.02)
@@ -428,7 +430,7 @@ class VisionEncoderLayer(nn.Module):
             features = torch.cat((features.mean(dim=-1, keepdim=True), features), dim=-1)
             features = features.transpose(-1, -2)
 
-        features = features + torch.tanh(self.gate)
+        features = self.act_fn(features + torch.tanh(self.gate))
         features = self.dropout(features)
 
         features = { 
