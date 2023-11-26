@@ -123,11 +123,11 @@ class Config(BaseModel):
     num_class: int = 6
     prototypes: int = 128
 
-    use_arcface_loss: bool = False
-    use_token_loss: bool = False
-    use_proto_loss: bool = False
-    use_contrasive_loss: bool = False
-    use_align_loss: bool = True
+    use_arcface_loss: bool = True
+    use_token_loss: bool = True
+    use_proto_loss: bool = True
+    use_contrasive_loss: bool = True
+    use_align_loss: bool = False
 
     one_hot: bool = True
 

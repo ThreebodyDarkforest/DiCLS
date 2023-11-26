@@ -48,18 +48,19 @@ def train(cfg, model, dataloader, idx2label, start_time=None, writer=None, step=
         # TODO: move this to collect_fn
         suffix = 'Description: green leaf with disease'
         tokens, targets = get_caption(model.tokenizer, idx2label, 
-                                      labels, 'Detect: ', suffix, cfg.tokenizer_max_length)
+                                      labels, None, None, cfg.tokenizer_max_length)
         targets = torch.Tensor(targets)
         #print([idx2label[i] for i, k in enumerate(labels[0]) if k])
         #vocab = {v : k for k, v in model.tokenizer.get_vocab().items()}
         #sent = [vocab[int(token.numpy())] for token in tokens['input_ids'][0]]
 
         inputs = (imgs.to(device), tokens.to(device))
-        labels = targets.float().to(device)
+        word_targets = targets.float().to(device)
+        targets = labels.float().to(device)
         
         #print(sent, labels[0])
 
-        all_loss = model(inputs, labels)
+        all_loss = model(inputs, targets, word_targets)
         
         loss = all_loss['total']
 
@@ -116,24 +117,24 @@ def test(cfg, model, dataloader, idx2label, test=False):
 
             suffix = 'Description: green leaf with disease'
             tokens, targets = get_caption(model.tokenizer, idx2label, 
-                                          labels, 'Detect: ', suffix, cfg.tokenizer_max_length)
+                                          labels, None, None, cfg.tokenizer_max_length)
             targets = torch.Tensor(targets)
 
             inputs = (imgs.to(device), tokens.to(device))
-            labels = targets.long().to(device)
+            labels = labels.float()
 
             outputs, logits, probs = model(inputs)
             #print(labels[0], probs[0])
             #predictions = (probs > cfg.pred_threshold).long()
 
             all_logits.append(probs.detach().cpu().numpy())
-            all_targets.append(labels.detach().cpu().numpy())
+            all_targets.append(labels.detach().numpy())
         
         #print([x.shape for x in all_logits])
         all_logits = np.vstack(all_logits)
-        all_targets = np.vstack(all_targets)[:, 1:]
+        all_targets = np.vstack(all_targets)
 
-        print(all_logits[0], all_targets[0])
+        #print(all_logits[0], all_targets[0])
 
         results = evaluate(all_logits, all_targets, cfg.num_class, 
                            cfg.pred_threshold, **cfg.eval.dict())

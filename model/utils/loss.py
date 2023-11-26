@@ -12,23 +12,54 @@ __all__ = ['FocalLoss', 'ArcfaceLoss', 'TokenLoss', 'ContrasiveLoss', 'Prototype
 class LossEvaluator(nn.Module):
     def __init__(self, cfg) -> None:
         super().__init__()
-        self.args_list = []
-        self.losses_fn = nn.ModuleList()
+        #self.args_list = []
+        self.cfg = cfg
+        self.loss_dict = {}
+        self.losses_fn = nn.ModuleDict()
         # TODO: init loss module
 
-    def add_loss(self, loss_fn: nn.Module, 
-                 inputs: List[Any] | Tuple[Any], scale: int = 1):
-        self.losses_fn.append(loss_fn)
-        self.args_list.append((inputs, scale))
+        if self.cfg.use_arcface_loss:
+            args_dict = self.cfg.loss.arcface_loss.dict()
+            args_dict['one_hot'] = self.cfg.one_hot
+            
+            self.losses_fn.update({'ArcfaceLoss': ArcfaceLoss(**args_dict)})
+
+        if self.cfg.use_token_loss:
+            args_dict = self.cfg.loss.token_loss.dict()
     
+            # THIS WILL LEAD TO A MEMORY LEAK ON GPU, but I dont know why :(
+
+            self.losses_fn.update({'TokenLoss': TokenLoss(**args_dict)})
+
+        if self.cfg.use_contrasive_loss:
+            args_dict = self.cfg.loss.contrasive_loss.dict()
+
+            self.losses_fn.update({'ContrasiveLoss': ContrasiveLoss(**args_dict)})
+
+        if self.cfg.use_proto_loss:
+            args_dict = self.cfg.loss.proto_loss.dict()
+            
+            self.losses_fn.update({'PrototypeLoss': PrototypeLoss(**args_dict)})
+        
+        if self.cfg.use_align_loss:
+            args_dict = self.cfg.loss.align_loss.dict()
+
+            self.losses_fn.update({'AlignLoss': AlignLoss(**args_dict)})
+        
+        args_dict = self.cfg.loss.focal_loss.dict()
+        args_dict['one_hot'] = self.cfg.one_hot
+        
+        self.losses_fn.update({'FocalLoss': FocalLoss(**args_dict)})
+
+    def add_loss(self, name, inputs, weight):
+        self.loss_dict.update({name : (inputs, weight)})
+
     def forward(self):
         losses = {}
+        for name, (inputs, weight) in self.loss_dict.items():
+            loss = self.losses_fn[name](*inputs) * weight
+            losses.update({name : loss})
         
-        for i, loss_fn in enumerate(self.losses_fn):
-            inputs, scale = self.args_list[i]
-            loss = loss_fn(*inputs) * scale
-            losses.update({loss_fn._get_name() : loss})
-
         loss = [l for l in losses.values()]
         loss = torch.sum(torch.stack(loss))
         losses.update({"total" : loss})
@@ -198,8 +229,8 @@ class TokenLoss(AbstractLoss):
 
         return loss_local
 
-    def forward(self, x):
-        return x
+    #def forward(self, x):
+    #    return x
 
 class ContrasiveLoss(AbstractLoss):
     def __init__(self, softmax_temperature, **kwargs) -> None:
