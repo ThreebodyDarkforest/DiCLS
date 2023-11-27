@@ -46,9 +46,9 @@ def train(cfg, model, dataloader, idx2label, start_time=None, writer=None, step=
         #     )
 
         # TODO: move this to collect_fn
-        #suffix = 'Description: green leaf with disease'
+        suffix = 'Description: green leaf with disease'
         tokens, targets = get_caption(model.tokenizer, idx2label, 
-                                      labels, None, None, cfg.tokenizer_max_length)
+                                      labels, None, suffix, cfg.tokenizer_max_length)
         targets = torch.Tensor(targets)
         #print([idx2label[i] for i, k in enumerate(labels[0]) if k])
         #vocab = {v : k for k, v in model.tokenizer.get_vocab().items()}
@@ -107,9 +107,9 @@ def test(cfg, model, dataloader, idx2label, test=False):
             #captions = [captions[i] for i in range(bz)]
             #captions = ["All: " + ",".join([label for label in idx2label.values()]) + "[SEP] Description: green,leaf,disease"] * bz
 
-            #suffix = 'Description: green leaf with disease'
+            suffix = 'Description: green leaf with disease'
             tokens, targets = get_caption(model.tokenizer, idx2label, 
-                                          labels, None, None, cfg.tokenizer_max_length)
+                                          labels, None, suffix, cfg.tokenizer_max_length)
             
             # tokens = model.tokenizer(
             #     captions,

@@ -84,9 +84,9 @@ class PrototypeConfig(BaseModel):
     weight: float = 0.1
 
 class AlignConfig(BaseModel):
-    p: float = 0.03
+    p: float = 1
 
-    weight: float = 0.1
+    weight: float = 0.8
 
 class Loss(BaseModel):
     focal_loss: FocalConfig = FocalConfig()
@@ -126,7 +126,7 @@ class Config(BaseModel):
     use_arcface_loss: bool = True
     use_token_loss: bool = True
     use_proto_loss: bool = True
-    use_contrasive_loss: bool = True
+    use_contrasive_loss: bool = False
     use_align_loss: bool = True
 
     one_hot: bool = True

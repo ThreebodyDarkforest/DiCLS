@@ -251,6 +251,9 @@ class AlignLoss(AbstractLoss):
     def __init__(self, p, **kwargs) -> None:
         super().__init__()
         self.p = p
+        self.alpha = 0.75
+        self.gamma = 2
+        self.positive_temperature = 8.5
     
     def forward(self, word_emb, img_emb, targets, word_attn, mask):
         bz = word_attn.size(0)
@@ -261,29 +264,38 @@ class AlignLoss(AbstractLoss):
         sim = (img_emb.unsqueeze(1) @ word_emb.transpose(-1, -2)) / self.p
         sim = sim.squeeze(1)
         
-        sim[mask.detach()] = float("-inf")
+        sim = sim[:, :length]
+        #sim[mask.detach()] = 0
         sim = torch.sigmoid(sim)
 
-        with torch.no_grad():
-            atten_weights = word_attn.detach()
-            word_atten_weights = []
-            for i in range(bz):
-                atten_weight = atten_weights[i]
-                nonzero = atten_weight.nonzero().squeeze()
-                low = torch.quantile(atten_weight[nonzero], 0.1)
-                high = torch.quantile(atten_weight[nonzero], 0.9)
-                atten_weight[nonzero] = atten_weight[nonzero].clip(low, high)
-                word_atten_weights.append(atten_weight.clone())
-            word_atten_weights = torch.stack(word_atten_weights)
+        # with torch.no_grad():
+        #     atten_weights = word_attn.detach()
+        #     word_atten_weights = []
+        #     for i in range(bz):
+        #         atten_weight = atten_weights[i]
+        #         nonzero = atten_weight.nonzero().squeeze()
+        #         low = torch.quantile(atten_weight[nonzero], 0.1)
+        #         high = torch.quantile(atten_weight[nonzero], 0.9)
+        #         atten_weight[nonzero] = atten_weight[nonzero].clip(low, high)
+        #         word_atten_weights.append(atten_weight.clone())
+        #     word_atten_weights = torch.stack(word_atten_weights)
         
-        word_atten_weights /= word_atten_weights.sum(dim=1, keepdims=True)
+        # word_atten_weights /= word_atten_weights.sum(dim=1, keepdims=True)
 
         #print(word_atten_weights[0])
         #print(sim[0])
         #print(length)
 
-        loss = torch.sum(F.binary_cross_entropy_with_logits(
-            sim[:, :length], targets[:, :length], reduction="none") * word_atten_weights[:, :length]) / bz
+        loss = F.binary_cross_entropy_with_logits(
+            sim, targets[:, :length], reduction="none")
+        
+        loss[targets[:, :length] == 0] /= self.positive_temperature
+        #print(sim[0], targets[0, :length], loss[0])
+        loss = torch.sum(loss) / bz
+        #loss = F.binary_cross_entropy_with_logits(sim, targets)
+
+        pt = torch.exp(-loss)
+        loss = self.alpha * (1 - pt) ** self.gamma * loss
         
         return loss
 

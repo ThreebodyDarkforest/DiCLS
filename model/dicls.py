@@ -15,6 +15,7 @@ from .models import Mlp
 import torch.nn.functional as F
 from copy import deepcopy
 from einops import rearrange
+from timm.models.layers import trunc_normal_
 
 class DiCLS(nn.Module):
     # A pretty naive model name
@@ -49,6 +50,9 @@ class DiCLS(nn.Module):
         self.proto_proj = Mlp(cfg.glob_output_dim, out_features=cfg.prototypes)
         self.arc_proj = nn.Linear(cfg.fuse.embed_dim, cfg.num_class)
 
+        self.img_proj = nn.Linear(cfg.fuse.embed_dim, 256)
+        self.word_proj = nn.Linear(cfg.fuse.embed_dim, 256)
+
         self.head = nn.Linear(cfg.fuse.embed_dim, out_features=cfg.num_class)
 
         self.loss_evaluater = LossEvaluator(cfg)
@@ -56,7 +60,12 @@ class DiCLS(nn.Module):
         # args_dict = self.cfg.loss.focal_loss.dict()
         # args_dict['one_hot'] = self.cfg.one_hot
         # self.loss = FocalLoss(**args_dict)
+        trunc_normal_(self.img_proj.weight, std=.02)
+        trunc_normal_(self.word_proj.weight, std=.02)
     
+    def _init_weight(self, m):
+        pass
+
     def train(self, mode=True):
         self.is_training = mode
         for module in self.children():
@@ -98,6 +107,9 @@ class DiCLS(nn.Module):
 
         patch_emb, img_emb = inputs["visual"]["local"], inputs["visual"]["global"]
         word_emb, report_emb = inputs["lang"]["word"], inputs["lang"]["report"]
+
+        word_feat = self.word_proj(word_emb)
+        img_feat = self.img_proj(img_emb)
 
         patch_emb = self.local_emb(patch_emb)
         patch_emb = F.normalize(patch_emb, dim=-1)
@@ -172,7 +184,7 @@ class DiCLS(nn.Module):
         if self.cfg.use_align_loss:
             args_dict = self.cfg.loss.align_loss.dict()
 
-            inputs = (word_emb, img_emb, word_targets[:, 1:], lang_attn, mask)
+            inputs = (word_feat, img_feat, word_targets[:, 1:], lang_attn, mask)
             self.loss_evaluater.add_loss('AlignLoss', inputs, args_dict['weight'])
 
 
