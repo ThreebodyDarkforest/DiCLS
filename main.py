@@ -194,11 +194,12 @@ if __name__ == '__main__':
     device = torch.device(cfg.device)
     lr = float(cfg.lr)
     num_epochs = int(cfg.epochs)
+    bz = int(cfg.batch_size)
 
     model = DiCLS(cfg).to(device)
     
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, cfg.epochs)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, num_epochs)
 
     steps, max_acc = [0], 0.
 
@@ -213,10 +214,10 @@ if __name__ == '__main__':
         scheduler.load_state_dict(checkpoint['scheduler'])
         max_acc = checkpoint['max_acc']
 
-    train_dataloader = create_dataloader('PlantCLS', cfg.path, cfg.batch_size, True, dataset_type='train', use_npz=True)
-    val_dataloader = create_dataloader('PlantCLS', cfg.path, cfg.batch_size, True, dataset_type='val', use_npz=True)
+    train_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='train', use_npz=True)
+    val_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='val', use_npz=True)
     if cfg.test:
-        test_dataloader = create_dataloader('PlantCLS', cfg.path, cfg.batch_size, True, dataset_type='test', use_npz=True)
+        test_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='test', use_npz=True)
 
     idx2label = train_dataloader.dataset.idx2label
     data_len = len(train_dataloader)

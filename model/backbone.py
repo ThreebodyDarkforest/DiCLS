@@ -214,6 +214,7 @@ class LanguageEncoder(nn.Module):
         self.tokenizer.pad_token = '[PAD]'
 
         self.idx2word = {v : k for k, v in self.tokenizer.get_vocab().items()}
+        # TODO: just freeze 10 blocks
         if self.freeze_model is True:
             print("Freezing Language backbone...")
             for param in self.model.parameters():

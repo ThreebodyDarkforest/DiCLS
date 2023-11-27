@@ -120,6 +120,8 @@ class Config(BaseModel):
     glob_hidden_dim: int = 768
     glob_output_dim: int = 512
 
+    align_dim: int = 512
+
     num_class: int = 6
     prototypes: int = 128
 

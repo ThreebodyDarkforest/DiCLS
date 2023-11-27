@@ -50,8 +50,8 @@ class DiCLS(nn.Module):
         self.proto_proj = Mlp(cfg.glob_output_dim, out_features=cfg.prototypes)
         self.arc_proj = nn.Linear(cfg.fuse.embed_dim, cfg.num_class)
 
-        self.img_proj = nn.Linear(cfg.fuse.embed_dim, 256)
-        self.word_proj = nn.Linear(cfg.fuse.embed_dim, 256)
+        self.img_proj = Mlp(cfg.fuse.embed_dim, 1024, cfg.align_dim)
+        self.word_proj = Mlp(cfg.fuse.embed_dim, 1024, cfg.align_dim)
 
         self.head = nn.Linear(cfg.fuse.embed_dim, out_features=cfg.num_class)
 
@@ -60,11 +60,13 @@ class DiCLS(nn.Module):
         # args_dict = self.cfg.loss.focal_loss.dict()
         # args_dict['one_hot'] = self.cfg.one_hot
         # self.loss = FocalLoss(**args_dict)
-        trunc_normal_(self.img_proj.weight, std=.02)
-        trunc_normal_(self.word_proj.weight, std=.02)
+        self.apply(self._init_weights)
     
-    def _init_weight(self, m):
-        pass
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
     def train(self, mode=True):
         self.is_training = mode
