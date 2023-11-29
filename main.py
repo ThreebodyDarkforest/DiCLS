@@ -47,6 +47,7 @@ def train(cfg, model, dataloader, idx2label, start_time=None, writer=None, step=
 
         # TODO: move this to collect_fn
         suffix = 'Description: green leaf with disease'
+        #suffix = None
         tokens, targets = get_caption(model.tokenizer, idx2label, 
                                       labels, None, suffix, cfg.tokenizer_max_length)
         targets = torch.Tensor(targets)
@@ -108,6 +109,7 @@ def test(cfg, model, dataloader, idx2label, test=False):
             #captions = ["All: " + ",".join([label for label in idx2label.values()]) + "[SEP] Description: green,leaf,disease"] * bz
 
             suffix = 'Description: green leaf with disease'
+            #suffix = None
             tokens, targets = get_caption(model.tokenizer, idx2label, 
                                           labels, None, suffix, cfg.tokenizer_max_length)
             
@@ -220,6 +222,7 @@ if __name__ == '__main__':
         test_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='test', use_npz=True)
 
     idx2label = train_dataloader.dataset.idx2label
+    #idx2label = {i : 'Class' + str(v) for i, v in enumerate(range(6))}
     data_len = len(train_dataloader)
 
     if not cfg.test:

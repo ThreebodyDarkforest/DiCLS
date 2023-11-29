@@ -17,13 +17,26 @@ class Lang(BaseModel):
     output_dim: int = 128
     freeze_model: bool = True
 
+class Swint(BaseModel):
+    in_channels: List = [192, 384, 768, 768]
+    out_channels: int = 768
+    use_relu: bool = True
+    drop_prob: float = 0.2
+    drop_size: int = 4
+    drop_block: bool = False
+    use_spp: bool = False
+    use_pan: bool = False
+
 class Vision(BaseModel):
-    model_name: str = 'vit-base'
+    model_name: str = 'swint-v1'
     text_feat_dim: int = 768
     output_dim: int = 768
     hidden_dim: int = 2048
     pretrained: bool = True
     freeze_model: bool = True
+    frozen_stages: int = 6
+
+    swint: Swint = Swint()
      
 class EncoderConfig(BaseModel):
     lang: Lang = Lang()
@@ -120,7 +133,7 @@ class Config(BaseModel):
     glob_hidden_dim: int = 768
     glob_output_dim: int = 512
 
-    align_dim: int = 512
+    align_dim: int = 256
 
     num_class: int = 6
     prototypes: int = 128

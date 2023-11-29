@@ -11,6 +11,8 @@ from sklearn.metrics import (
 from sklearn.preprocessing import label_binarize
 import matplotlib.pyplot as plt
 import numpy as np
+from torchmetrics import Accuracy
+import torch
 
 SCALAR = ["accuracy", "precision", "recall", "f1_score", "avg_precision"]
 CURVE = ["roc_curve", "micro_roc", "pr_curve"]
@@ -24,10 +26,13 @@ def evaluate(logits: np.ndarray, targets: np.ndarray,
     results = {"num_classes": num_classes}
     y_true_binary = label_binarize(targets, classes=list(range(targets.shape[-1])))
 
+    acc_eval = Accuracy(task='multilabel', num_labels=num_classes)
     y_pred_binary = (logits >= threshold).astype(int)
-    accuracy = accuracy_score(targets, y_pred_binary)
+    accuracy_sk = accuracy_score(targets, y_pred_binary)
+    accuracy = float(acc_eval(torch.Tensor(logits), torch.Tensor(targets)).numpy())
     if accuracy_on:
         results.update({"accuracy": accuracy})
+        results.update({"accuracy_strict": accuracy_sk})
 
     precision = precision_score(y_true_binary, y_pred_binary, average='micro')
     if precision_on:

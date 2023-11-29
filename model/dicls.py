@@ -50,8 +50,8 @@ class DiCLS(nn.Module):
         self.proto_proj = Mlp(cfg.glob_output_dim, out_features=cfg.prototypes)
         self.arc_proj = nn.Linear(cfg.fuse.embed_dim, cfg.num_class)
 
-        self.img_proj = Mlp(cfg.fuse.embed_dim, 1024, cfg.align_dim)
-        self.word_proj = Mlp(cfg.fuse.embed_dim, 1024, cfg.align_dim)
+        self.img_proj = nn.Linear(cfg.fuse.embed_dim, out_features=cfg.align_dim)
+        self.word_proj = nn.Linear(cfg.fuse.embed_dim, out_features=cfg.align_dim)
 
         self.head = nn.Linear(cfg.fuse.embed_dim, out_features=cfg.num_class)
 
@@ -60,7 +60,10 @@ class DiCLS(nn.Module):
         # args_dict = self.cfg.loss.focal_loss.dict()
         # args_dict['one_hot'] = self.cfg.one_hot
         # self.loss = FocalLoss(**args_dict)
-        self.apply(self._init_weights)
+        #self.img_proj.apply(self._init_weights)
+        #self.word_proj.apply(self._init_weights)
+        trunc_normal_(self.img_proj.weight, std=.02)
+        trunc_normal_(self.word_proj.weight, std=.02)
     
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -86,19 +89,19 @@ class DiCLS(nn.Module):
 
         inputs = { "visual": visual, "lang": lang }
 
-        early_output = inputs["visual"]["all_hidden"].clone()
+        early_output = inputs["visual"]["all_hidden"]
         early_num = len(early_output)
 
         visual_outs, lang_outs = [], []
         for i, blk in enumerate(self.fuse_blocks):
-            early_feature = early_output[early_num - self.num_layer + i]
+            early_feature = early_output[early_num - self.num_layer + i].transpose(-1, -2)
             
             inputs = blk(inputs)
 
             feat_size = inputs["visual"]["hidden"].shape
-            early_feature = F.interpolate(early_feature, size=feat_size[-1])
+            early_feature = F.interpolate(early_feature, size=feat_size[1]).transpose(-1, -2)
 
-            inputs["visual"]["hidden"] = inputs["visual"]["hidden"] + early_feature
+            inputs["visual"]["hidden"] = inputs["visual"]["hidden"] #+ early_feature
             visual_outs.append(inputs["visual"]["hidden"])
             lang_outs.append(inputs["lang"]["hidden"])
 
@@ -135,7 +138,7 @@ class DiCLS(nn.Module):
         lang_feat = self.pool(lang_outs[:, :, -self.cfg.feature_depth:]).squeeze(2)
         lang_feat = lang_feat.transpose(0, 1)
 
-        #fuse_feat = torch.cat((vis_feat[:, 0], lang_feat[:, 0]), dim=-1).squeeze(1)
+        fuse_feat = torch.cat((vis_feat[:, 0], lang_feat[:, 0]), dim=-1).squeeze(1)
 
         cls_feat = vis_feat[:, 0]
         logits = self.head(cls_feat)
