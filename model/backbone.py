@@ -257,8 +257,8 @@ class ImageEncoder(nn.Module):
             glob = img_feat[-1].squeeze(-1).transpose(-1, -2)
             loc = img_feat[1].view(bz, embed_dim, -1).transpose(-1, -2)
             return {
-                "global": img_feat[-1].squeeze(-1).transpose(-1, -2),
-                "local": img_feat[1].view(bz, embed_dim, -1).transpose(-1, -2),
+                "global": img_feat[-1].squeeze(),
+                "local": loc,
                 "hidden": torch.cat((glob, loc), dim=1),
                 "all_hidden": tuple([x.view(bz, embed_dim, -1).transpose(-1, -2) for x in img_feat])
             }

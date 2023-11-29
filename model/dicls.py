@@ -48,12 +48,12 @@ class DiCLS(nn.Module):
         self.glob_emb = GlobalEmbedding(cfg.fuse.embed_dim, \
                                         cfg.glob_hidden_dim, cfg.glob_output_dim)
         self.proto_proj = Mlp(cfg.glob_output_dim, out_features=cfg.prototypes)
-        self.arc_proj = nn.Linear(cfg.fuse.embed_dim, cfg.num_class)
+        self.arc_proj = nn.Linear(cfg.fuse.embed_dim * 2, cfg.num_class)
 
         self.img_proj = nn.Linear(cfg.fuse.embed_dim, out_features=cfg.align_dim)
         self.word_proj = nn.Linear(cfg.fuse.embed_dim, out_features=cfg.align_dim)
 
-        self.head = nn.Linear(cfg.fuse.embed_dim, out_features=cfg.num_class)
+        self.head = nn.Linear(cfg.fuse.embed_dim * 2, out_features=cfg.num_class)
 
         self.loss_evaluater = LossEvaluator(cfg)
 
@@ -89,6 +89,9 @@ class DiCLS(nn.Module):
 
         inputs = { "visual": visual, "lang": lang }
 
+        img_emb_e = inputs["visual"]["global"]
+        report_emb_e = inputs["lang"]["report"]
+
         early_output = inputs["visual"]["all_hidden"]
         early_num = len(early_output)
 
@@ -101,7 +104,7 @@ class DiCLS(nn.Module):
             feat_size = inputs["visual"]["hidden"].shape
             early_feature = F.interpolate(early_feature, size=feat_size[1]).transpose(-1, -2)
 
-            inputs["visual"]["hidden"] = inputs["visual"]["hidden"] #+ early_feature
+            inputs["visual"]["hidden"] = inputs["visual"]["hidden"] + early_feature
             visual_outs.append(inputs["visual"]["hidden"])
             lang_outs.append(inputs["lang"]["hidden"])
 
@@ -110,8 +113,10 @@ class DiCLS(nn.Module):
             lang_attn = inputs["lang"]["last_attn"].detach()
             mask = inputs["lang"]["masks"].detach()
 
-        patch_emb, img_emb = inputs["visual"]["local"], inputs["visual"]["global"]
-        word_emb, report_emb = inputs["lang"]["word"], inputs["lang"]["report"]
+        patch_emb = inputs["visual"]["local"]
+        word_emb = inputs["lang"]["word"]
+        img_emb = inputs["visual"]["global"]
+        report_emb = inputs["lang"]["report"]
 
         word_feat = self.word_proj(word_emb)
         img_feat = self.img_proj(img_emb)
@@ -140,7 +145,7 @@ class DiCLS(nn.Module):
 
         fuse_feat = torch.cat((vis_feat[:, 0], lang_feat[:, 0]), dim=-1).squeeze(1)
 
-        cls_feat = vis_feat[:, 0]
+        cls_feat = fuse_feat # vis_feat[:, 0]
         logits = self.head(cls_feat)
         #logits_probs = logits.softmax(dim=-1)
         logits_probs = torch.sigmoid(logits)
@@ -159,8 +164,8 @@ class DiCLS(nn.Module):
 
         if not self.is_training:
             with torch.no_grad():
-                sim = (img_emb @ report_emb.t()).detach()
-                return inputs, sim, logits_probs
+                #sim = (img_emb @ report_emb.t()).detach()
+                return inputs, logits, logits_probs
 
         if self.cfg.use_arcface_loss:
             args_dict = self.cfg.loss.arcface_loss.dict()
@@ -177,7 +182,7 @@ class DiCLS(nn.Module):
         if self.cfg.use_contrasive_loss:
             args_dict = self.cfg.loss.contrasive_loss.dict()
             
-            inputs = (img_emb, report_emb)
+            inputs = (img_emb_e, report_emb_e)
             self.loss_evaluater.add_loss('ContrasiveLoss', inputs, args_dict['weight'])
 
         if self.cfg.use_proto_loss:

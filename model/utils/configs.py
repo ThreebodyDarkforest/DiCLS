@@ -141,7 +141,7 @@ class Config(BaseModel):
     use_arcface_loss: bool = True
     use_token_loss: bool = True
     use_proto_loss: bool = True
-    use_contrasive_loss: bool = False
+    use_contrasive_loss: bool = True
     use_align_loss: bool = True
 
     one_hot: bool = True
@@ -151,8 +151,9 @@ class Config(BaseModel):
     def merge_from_config(self, cfg):
         self.__dict__.update(cfg.__dict__)
 
-    def merge_from_file(self):
-        pass
+    def merge_from_file(self, path):
+        cfg = load_config(path)
+        self.__dict__.update(cfg.__dict__)
 
 if __name__ == '__main__':
     to_yaml_file('./test.yaml', Config())
