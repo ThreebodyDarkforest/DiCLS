@@ -248,12 +248,12 @@ class ContrasiveLoss(AbstractLoss):
         return (loss1 + loss2) / 2.
     
 class AlignLoss(AbstractLoss):
-    def __init__(self, p, **kwargs) -> None:
+    def __init__(self, p, alpha, gamma, positive_temperature, **kwargs) -> None:
         super().__init__()
         self.p = p
-        self.alpha = 0.75
-        self.gamma = 2
-        self.positive_temperature = 8.5
+        self.alpha = alpha
+        self.gamma = gamma
+        self.positive_temperature = positive_temperature
     
     def forward(self, word_emb, img_emb, targets, word_attn, mask):
         bz = word_attn.size(0)
@@ -289,13 +289,14 @@ class AlignLoss(AbstractLoss):
         loss = F.binary_cross_entropy_with_logits(
             sim, targets[:, :length], reduction="none")
         
-        loss[targets[:, :length] == 0] /= self.positive_temperature
         #print(sim[0], targets[0, :length], loss[0])
-        loss = torch.sum(loss) / bz
         #loss = F.binary_cross_entropy_with_logits(sim, targets)
-
-        pt = torch.exp(-loss)
-        loss = self.alpha * (1 - pt) ** self.gamma * loss
+        
+        loss[targets[:, :length] == 0] /= self.positive_temperature
+        #pt = torch.exp(-loss)
+        #loss = self.alpha * (1 - pt) ** self.gamma * loss
+        
+        loss = torch.sum(loss) / bz
         
         return loss
 

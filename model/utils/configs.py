@@ -21,11 +21,11 @@ class Swint(BaseModel):
     in_channels: List = [192, 384, 768, 768]
     out_channels: int = 768
     use_relu: bool = True
-    drop_prob: float = 0.2
+    drop_prob: float = 0.1
     drop_size: int = 4
-    drop_block: bool = False
-    use_spp: bool = False
-    use_pan: bool = False
+    drop_block: bool = True
+    use_spp: bool = True
+    use_pan: bool = True
 
 class Vision(BaseModel):
     model_name: str = 'swint-v1'
@@ -98,6 +98,9 @@ class PrototypeConfig(BaseModel):
 
 class AlignConfig(BaseModel):
     p: float = 1
+    alpha = 0.99
+    gamma = 1
+    positive_temperature = 8.5
 
     weight: float = 0.8
 
@@ -145,6 +148,8 @@ class Config(BaseModel):
     use_align_loss: bool = True
 
     one_hot: bool = True
+    use_ori_classnames: bool = True
+    fuse_features: bool = False
 
     pred_threshold: float = 0.5
 

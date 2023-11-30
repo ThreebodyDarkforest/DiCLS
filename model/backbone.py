@@ -254,10 +254,11 @@ class ImageEncoder(nn.Module):
         else:
             img_feat = self.model(x)
             bz, embed_dim = img_feat[0].size(0), img_feat[0].size(1)
-            glob = img_feat[-1].squeeze(-1).transpose(-1, -2)
+            glob = nn.functional.interpolate(img_feat[-1], size=[1, 1], mode='bilinear')
+            glob = glob.squeeze(-1).transpose(-1, -2)
             loc = img_feat[1].view(bz, embed_dim, -1).transpose(-1, -2)
             return {
-                "global": img_feat[-1].squeeze(),
+                "global": glob.view(-1, embed_dim),
                 "local": loc,
                 "hidden": torch.cat((glob, loc), dim=1),
                 "all_hidden": tuple([x.view(bz, embed_dim, -1).transpose(-1, -2) for x in img_feat])

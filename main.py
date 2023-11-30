@@ -163,7 +163,7 @@ if __name__ == '__main__':
     # parser.add_argument('--lr_scheduler', default='cos', help='select your device.')
     parser.add_argument('--loss_period', default=5, help='step intervals to print total loss & lr.')
     parser.add_argument('--test_period', default=1, help='epoch intervals to print detail test results.')
-    parser.add_argument('--save_period', default=3, help='epoch intervals to save model ckpt.')
+    parser.add_argument('--save_period', default=5, help='epoch intervals to save model ckpt.')
 
     parser.add_argument('--keep', action='store_true', help='start training from last checkpoint.')
     parser.add_argument('--visualize', action='store_true', help='visualize training results.') # TODO
