@@ -23,9 +23,9 @@ class Swint(BaseModel):
     use_relu: bool = True
     drop_prob: float = 0.1
     drop_size: int = 4
-    drop_block: bool = True
-    use_spp: bool = True
-    use_pan: bool = True
+    drop_block: bool = False
+    use_spp: bool = False
+    use_pan: bool = False
 
 class Vision(BaseModel):
     model_name: str = 'swint-v1'

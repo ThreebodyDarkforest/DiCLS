@@ -293,10 +293,10 @@ class AlignLoss(AbstractLoss):
         #loss = F.binary_cross_entropy_with_logits(sim, targets)
         
         loss[targets[:, :length] == 0] /= self.positive_temperature
-        #pt = torch.exp(-loss)
-        #loss = self.alpha * (1 - pt) ** self.gamma * loss
-        
         loss = torch.sum(loss) / bz
+
+        pt = torch.exp(-loss)
+        loss = self.alpha * (1 - pt) ** self.gamma * loss        
         
         return loss
 

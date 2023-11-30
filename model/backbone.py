@@ -153,6 +153,7 @@ class ImageEncoder(nn.Module):
         self.output_dim = output_dim
         self.text_feat_dim = text_feat_dim
         self.freeze_model = freeze_model
+        self.cfg = cfg
 
         if "vit" in model_name:
             vit_grad_ckpt = False
@@ -254,8 +255,11 @@ class ImageEncoder(nn.Module):
         else:
             img_feat = self.model(x)
             bz, embed_dim = img_feat[0].size(0), img_feat[0].size(1)
-            glob = nn.functional.interpolate(img_feat[-1], size=[1, 1], mode='bilinear')
-            glob = glob.squeeze(-1).transpose(-1, -2)
+            if 'swint' in self.cfg.model_name:
+                glob = nn.functional.interpolate(img_feat[-1], size=[1, 1], mode='bilinear')
+                glob = glob.squeeze(-1).transpose(-1, -2)
+            else:
+                glob = img_feat[-1].squeeze(-1).transpose(-1, -2)
             loc = img_feat[1].view(bz, embed_dim, -1).transpose(-1, -2)
             return {
                 "global": glob.view(-1, embed_dim),

@@ -145,7 +145,7 @@ class DiCLS(nn.Module):
 
         fuse_feat = torch.cat((vis_feat[:, 0], lang_feat[:, 0]), dim=-1).squeeze(1)
 
-        cls_feat = vis_feat[:, 0] #fuse_feat # 
+        cls_feat = vis_feat[:, 0] if not self.cfg.fuse_features else fuse_feat
         logits = self.head(cls_feat)
         #logits_probs = logits.softmax(dim=-1)
         logits_probs = torch.sigmoid(logits)
