@@ -7,16 +7,20 @@ import pandas as pd
 import numpy as np
 from typing import List
 from .transform import GeneralTransform
+from . import utils
+import random
+import copy
 
 class PlantDataset(Dataset):
     def __init__(self, img_path=None, label_path=None, npz_path=None,
-                 dtype='train', one_hot=True, use_npz=False) -> None:
+                 dtype='train', one_hot=True, use_npz=False, label_smooth=None, mixup=None) -> None:
         super().__init__()
 
         assert dtype in ['train', 'test', 'val']
         assert (img_path and label_path) or npz_path, "Please select one way to load data."
 
         self.label_path, self.img_path = label_path, img_path
+        self.mixup, self.label_smooth = mixup, label_smooth
         data = pd.read_csv(label_path)
 
         self.transform = GeneralTransform.train_transform \
@@ -24,6 +28,7 @@ class PlantDataset(Dataset):
         self.use_npz = use_npz
 
         self.img_files, self.labels, all_labels = [], [], []
+        self.plain_labels = []
         [all_labels.extend(label.split(' ')) for label in data['labels']]
         all_labels = np.unique(all_labels).tolist()
         self.idx2label = { k : v for k, v in enumerate(all_labels) }
@@ -42,22 +47,38 @@ class PlantDataset(Dataset):
             #self.idx2label = data["idx2label"]
             #if one_hot:
             #   self.labels = data["one_hot"]
+        self.plain_labels = copy.deepcopy(self.labels)
+        
+        if one_hot and label_smooth is not None:
+            self.labels = np.stack([utils.label_smooth(label, label_smooth) for label in self.labels])
 
         if one_hot and not use_npz:
             self.labels = np.stack(self.labels)
+
+        self.n = len(self.labels)
+
+    def _load(self, idx):
+        if self.use_npz:
+            img = self.imgs[idx]
+        else:
+            img = np.array(Image.open(self.img_files[idx]))
+        
+        label = self.labels[idx]
+        return img, label
         
     def __getitem__(self, idx):
-        if self.use_npz:
-            img = Image.fromarray(self.imgs[idx])
-            img = self.transform(img)
-            label = self.labels[idx]
-            return img, label
-        else:
-            img = Image.open(self.img_files[idx])
-            img = self.transform(img)
+        img, label = self._load(idx)
+        plain_label = self.plain_labels[idx]
 
-            label = self.labels[idx]
-            return img, label
+        if self.mixup and random.random() < self.mixup:
+            i = random.randint(0, self.n - 1)
+            img, label = utils.mixup(img, label, *self._load(i))
+            plain_label += self.plain_labels[i]
+            plain_label[plain_label > 1] = 1
+
+        img = self.transform(Image.fromarray(img))
+            
+        return img, label, plain_label
     
     def __len__(self):
         return len(self.imgs if self.use_npz else self.img_files)
@@ -100,7 +121,8 @@ class PlantKaggle(PlantDataset):
         return f"plant dataset locate at {self.img_path}."
 
 class PlantClassification(PlantDataset):
-    def __init__(self, path, dataset_type='train', use_npz=False, one_hot=True) -> None:
+    def __init__(self, path, dataset_type='train', use_npz=False, one_hot=True,
+                 label_smooth=None, mixup=None) -> None:
         assert dataset_type in ['train', 'test', 'val']
 
         path = osp.join(path, dataset_type)
@@ -112,8 +134,11 @@ class PlantClassification(PlantDataset):
             npz_path = osp.join(path, f"{dataset_type}.npz")
         
         super().__init__(img_path, label_path, npz_path=npz_path,
-                         use_npz=use_npz, one_hot=one_hot, dtype=dataset_type)
+                         use_npz=use_npz, one_hot=one_hot, dtype=dataset_type, 
+                         label_smooth=label_smooth, mixup=mixup)
 
+def collect_fn():
+    pass
 
 if __name__ == '__main__':
     test = PlantClassification('../data/plant_dataset/train')

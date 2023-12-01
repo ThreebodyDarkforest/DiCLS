@@ -1,24 +1,11 @@
 # TODO: Add captions to labels
-from .plant_pathology import PlantClassification, PlantKaggle
-from torch.utils.data import DataLoader
 from typing import Callable, Dict
 import re
 import numpy as np
 from collections import defaultdict
 from itertools import chain
 import torch
-
-all_datasets = {
-    "PlantCLS": PlantClassification,
-    "PlangKaggle": PlantKaggle,
-}
-
-def create_dataloader(name, data_path, batch_size: int = 32,
-                      shuffle: bool = True, num_workers: int = 4,
-                      collect_fn: Callable = None, **kwargs):
-    dataset = all_datasets.get(name)(path=data_path, **kwargs)
-    return DataLoader(dataset, batch_size, shuffle, num_workers=num_workers, 
-                      pin_memory=True, collate_fn=collect_fn)
+import cv2
 
 def label2caption(label: str, infos: Dict):
     definition = infos.get('def')
@@ -97,5 +84,16 @@ def get_caption(tokenizer, idx2label, targets=None,
         
     return (tokens, one_hot)
 
-def load_config(path):
-    pass
+def mixup(im, labels, im2, labels2):
+    # Applies MixUp augmentation https://arxiv.org/pdf/1710.09412.pdf
+    r = np.random.beta(32.0, 32.0)  # mixup ratio, alpha=beta=32.0
+    im = (im * r + im2 * (1 - r)).astype(np.uint8)
+    #labels = np.concatenate((labels, labels2), 0)
+    labels = (labels * r + labels2 * (1 - r))
+    return im, labels
+
+def label_smooth(labels, label_smooth=0.02, num_classes=None):
+    if num_classes is None:
+        num_classes = labels.shape[-1]
+    
+    return (1 - label_smooth) * labels + label_smooth / num_classes

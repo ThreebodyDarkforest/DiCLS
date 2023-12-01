@@ -8,7 +8,8 @@ from model.utils.logger import log_tensorboard, log_detail, setup_logger
 from argparse import ArgumentParser
 import torch.optim as optim
 from torch.nn import functional as F
-from dataset.utils import create_dataloader, label2caption, get_caption
+from dataset.utils import label2caption, get_caption
+from dataset.dataloader import create_dataloader
 from tqdm import tqdm
 import os
 import logging
@@ -25,7 +26,7 @@ def train(cfg, model, dataloader, idx2label, start_time=None, writer=None, step=
     for i, data in enumerate(dataloader):
         step[0] += 1
 
-        imgs, labels = data
+        imgs, labels, plains = data
         bz = imgs.size(0)
         
         #ids = torch.nonzero(labels == 1).squeeze().tolist() 
@@ -49,7 +50,7 @@ def train(cfg, model, dataloader, idx2label, start_time=None, writer=None, step=
         suffix = 'Description: green leaf with disease'
         #suffix = None
         tokens, targets = get_caption(model.tokenizer, idx2label, 
-                                      labels, None, suffix, cfg.tokenizer_max_length)
+                                      plains, None, suffix, cfg.tokenizer_max_length)
         targets = torch.Tensor(targets)
         #print([idx2label[i] for i, k in enumerate(labels[0]) if k])
         #vocab = {v : k for k, v in model.tokenizer.get_vocab().items()}
@@ -99,7 +100,7 @@ def test(cfg, model, dataloader, idx2label, test=False):
     all_logits, all_targets = [], []
     with torch.no_grad():
         for i, data in enumerate(tqdm(dataloader, 'Testing: ')):
-            imgs, labels = data
+            imgs, labels, plains = data
             bz = imgs.size(0)
             
             # ids = torch.nonzero(labels == 1).squeeze().tolist()
@@ -111,7 +112,7 @@ def test(cfg, model, dataloader, idx2label, test=False):
             suffix = 'Description: green leaf with disease'
             #suffix = None
             tokens, targets = get_caption(model.tokenizer, idx2label, 
-                                          labels, None, suffix, cfg.tokenizer_max_length)
+                                          plains, None, suffix, cfg.tokenizer_max_length)
             
             # tokens = model.tokenizer(
             #     captions,
@@ -177,6 +178,7 @@ if __name__ == '__main__':
     os.environ['TOKENIZERS_PARALLELISM'] = 'true'
     torch.backends.cudnn.enable = True
     torch.backends.cudnn.benchmark = True
+    torch.manual_seed(3407)
 
     args = parser.parse_args()
     cfg = Config()
@@ -216,13 +218,15 @@ if __name__ == '__main__':
         scheduler.load_state_dict(checkpoint['scheduler'])
         max_acc = checkpoint['max_acc']
 
-    train_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='train', use_npz=True)
+    train_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='train', use_npz=True, label_smooth=0.02, mixup=0.05)
     val_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='val', use_npz=True)
     if cfg.test:
         test_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='test', use_npz=True)
 
-    idx2label = train_dataloader.dataset.idx2label
-    #idx2label = {i : 'Class' + str(v) for i, v in enumerate(range(6))}
+    if cfg.use_ori_classnames:
+        idx2label = train_dataloader.dataset.idx2label
+    else:
+        idx2label = {i : 'Class' + str(v) for i, v in enumerate(range(6))}
     data_len = len(train_dataloader)
 
     if not cfg.test:

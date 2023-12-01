@@ -1,7 +1,8 @@
 from model.dicls import DiCLS
 from model.utils.configs import Config
 from model.backbone import GlobalEmbedding
-from dataset.utils import create_dataloader, label2caption, get_caption
+from dataset.utils import label2caption, get_caption
+from dataset.dataloader import create_dataloader
 from dataset.transform import GeneralTransform
 from model.utils.visualizer import vis_grid_attention
 import torch
@@ -47,7 +48,7 @@ if __name__ == '__main__':
         )
 
         res = model((img.to(device), txt.to(device)))
-        vis_attn = res[0]['visual']['last_attn'].squeeze()
+        vis_attn = res[1][3].squeeze()
         vis_attn = vis_attn.view(int(vis_attn.size(0) ** 0.5), int(vis_attn.size(0) ** 0.5))
         print(vis_attn.detach().cpu().numpy())
         vis_attn = vis_attn.detach().cpu().numpy()

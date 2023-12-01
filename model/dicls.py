@@ -95,11 +95,12 @@ class DiCLS(nn.Module):
         early_output = inputs["visual"]["all_hidden"]
         early_num = len(early_output)
 
-        visual_outs, lang_outs = [], []
+        visual_outs, lang_outs, attns = [], [], []
         for i, blk in enumerate(self.fuse_blocks):
             early_feature = early_output[early_num - self.num_layer + i].transpose(-1, -2)
             
             inputs = blk(inputs)
+            attns.append(inputs["visual"]["last_attn"].detach())
 
             feat_size = inputs["visual"]["hidden"].shape
             early_feature = F.interpolate(early_feature, size=feat_size[1]).transpose(-1, -2)
@@ -164,8 +165,8 @@ class DiCLS(nn.Module):
 
         if not self.is_training:
             with torch.no_grad():
-                sim = torch.sigmoid((img_emb @ report_emb.t()).detach())
-                return inputs, sim, logits_probs
+                #sim = torch.sigmoid((img_emb @ report_emb.t()).detach())
+                return inputs, attns, logits_probs
 
         if self.cfg.use_arcface_loss:
             args_dict = self.cfg.loss.arcface_loss.dict()
