@@ -58,6 +58,7 @@ class FusionConfig(BaseModel):
     lang: FuseLang = FuseLang()
     embed_dim: int = 768
     hidden_dim: int = 768
+    channels: int = 197
     num_heads: int = 12
     self_attn: bool = True
 

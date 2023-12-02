@@ -416,9 +416,6 @@ class BertEncoderLayer(BertPreTrainedModel):
         self.attention = BertAttention(config, position_embedding_type)
         self.intermediate = BertIntermediate(config)
         self.output = BertOutput(config)
-        self.gate = nn.Parameter(torch.zeros(1, 1, config.hidden_size))
-
-        trunc_normal_(self.gate, std=.02)
 
     def forward(self, inputs):
         language_dict_features = inputs["lang"]
@@ -446,7 +443,6 @@ class BertEncoderLayer(BertPreTrainedModel):
         outputs = (layer_output,) + outputs
         hidden_states = outputs[0]
 
-        hidden_states = hidden_states + torch.tanh(self.gate)
         last_attn_pt = outputs[1][:, :, 0, 1:].mean(dim=1)
 
         language_dict_features = {
@@ -483,11 +479,8 @@ class VisionEncoderLayer(nn.Module):
 
         self.encoder = VanBlock(self.embed_dim, drop_path = self.droppath) if use_van_attn else \
                        Block(self.embed_dim, self.num_heads, drop_path = self.droppath)
-        self.gate = nn.Parameter(torch.zeros(1, 1, self.embed_dim))
         self.dropout = nn.Dropout(self.dropout)
         
-        trunc_normal_(self.gate, std=.02)
-
     def forward(self, inputs):
         features = inputs['visual']['hidden']
         
@@ -508,7 +501,6 @@ class VisionEncoderLayer(nn.Module):
             features = torch.cat((features.mean(dim=-1, keepdim=True), features), dim=-1)
             features = features.transpose(-1, -2)
 
-        features = features + torch.tanh(self.gate)
         features = self.dropout(features)
 
         features = { 
@@ -572,7 +564,7 @@ class CrossAttention(nn.Module):
         return outs
     
 class BiAttnBlock(nn.Module):
-    def __init__(self, cfg, embed_dim, hidden_dim, num_heads, drop, self_attn=False) -> None:
+    def __init__(self, cfg, embed_dim, hidden_dim, num_heads, channels, drop, self_attn=False) -> None:
         super().__init__()
         
         self.i2t_attn = CrossAttention(cfg, embed_dim, hidden_dim, num_heads, drop, self_attn)
@@ -580,6 +572,11 @@ class BiAttnBlock(nn.Module):
 
         self.i2t_head = Mlp(hidden_dim, out_features=embed_dim)
         self.t2i_head = Mlp(hidden_dim, out_features=embed_dim)
+
+        self.i2t_attn_gate = nn.Parameter(torch.zeros(1, channels, hidden_dim))
+        self.i2t_dense_gate = nn.Parameter(torch.zeros(1, channels, embed_dim))
+        self.t2i_attn_gate = nn.Parameter(torch.zeros(1, channels, hidden_dim))
+        self.t2i_dense_gate = nn.Parameter(torch.zeros(1, channels, embed_dim))
         
         self.norm1 = nn.LayerNorm(hidden_dim)
         self.norm2 = nn.LayerNorm(embed_dim)
@@ -588,26 +585,31 @@ class BiAttnBlock(nn.Module):
         visual = inputs["visual"]["hidden"]
         lang = inputs["lang"]["hidden"]
 
-        inputs["visual"]["hidden"] = self.norm2(self.i2t_head(
-                                     self.norm1(self.t2i_attn(visual, lang))))
-        inputs["lang"]["hidden"] = self.norm2(self.t2i_head(
-                                   self.norm1(self.i2t_attn(lang, visual))))
+        # inputs["visual"]["hidden"] = visual + self.norm2(self.i2t_head(
+        #                              self.norm1(self.t2i_attn(visual, lang))))
+        # inputs["lang"]["hidden"] = lang + self.norm2(self.t2i_head(
+        #                            self.norm1(self.i2t_attn(lang, visual))))
 
+        visual = self.norm1(visual + torch.tanh(self.i2t_attn_gate) * self.i2t_attn(lang, visual))
+        visual = self.norm2(visual + torch.tanh(self.i2t_dense_gate) * self.i2t_head(visual))
+
+        lang = self.norm1(lang + torch.tanh(self.t2i_attn_gate) * self.t2i_attn(visual, lang))
+        lang = self.norm2(lang + torch.tanh(self.t2i_dense_gate) * self.t2i_head(lang))
+
+        inputs["visual"]["hidden"] = visual
+        inputs["lang"]["hidden"] = lang
+ 
         return inputs
 
 class FusionBlock(nn.Module):
     def __init__(self, cfg, embed_dim=768, hidden_dim=1024, drop=0.3, self_attn=False) -> None:
         super().__init__()
 
-        self.lang_attn_gate = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.visual_attn_gate = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.cross_encoder = nn.ModuleList([
-            BiAttnBlock(cfg, embed_dim, hidden_dim, cfg.num_heads, drop, self_attn),
+            BiAttnBlock(cfg, embed_dim, hidden_dim, cfg.num_heads, cfg.channels, drop, self_attn),
             VisionEncoderLayer(cfg.visual, **cfg.visual.dict()),
             BertEncoderLayer(BertConfig(**cfg.lang.dict()), position_embedding_type='absolute'),
         ])
-        self.norm_layer1 = nn.BatchNorm1d(embed_dim)
-        self.norm_layer2 = nn.BatchNorm1d(embed_dim)
         self.dropout = nn.Dropout(drop)
 
     def forward(self, inputs):
@@ -615,10 +617,8 @@ class FusionBlock(nn.Module):
         outputs = self.cross_encoder[1](outputs)
         outputs = self.cross_encoder[2](outputs)
 
-        outputs["visual"]["hidden"] = self.dropout(self.norm_layer1(
-                                      outputs["visual"]["hidden"].transpose(-1, -2)).transpose(-1, -2))
-        outputs["lang"]["hidden"] = self.dropout(self.norm_layer2(
-                                    outputs["lang"]["hidden"].transpose(-1, -2)).transpose(-1, -2))
+        outputs["visual"]["hidden"] = self.dropout(outputs["visual"]["hidden"])
+        outputs["lang"]["hidden"] = self.dropout(outputs["lang"]["hidden"])
 
         return outputs
 
