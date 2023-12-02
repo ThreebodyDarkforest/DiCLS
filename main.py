@@ -218,7 +218,7 @@ if __name__ == '__main__':
         scheduler.load_state_dict(checkpoint['scheduler'])
         max_acc = checkpoint['max_acc']
 
-    train_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='train', use_npz=True, label_smooth=0.02, mixup=0.05)
+    train_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='train', use_npz=True, label_smooth=0.02, mixup=0.1)
     val_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='val', use_npz=True)
     if cfg.test:
         test_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='test', use_npz=True)

@@ -9,6 +9,7 @@ import torch
 from argparse import ArgumentParser
 from PIL import Image
 import numpy as np
+from transformers.models.bert import BertModel
 
 if __name__ == '__main__':
     train_dataloader = create_dataloader('PlantCLS', 'data/plant_dataset', 1, True, dataset_type='train', use_npz=True, label_smooth=0.01, mixup=0.1)

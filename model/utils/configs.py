@@ -23,18 +23,18 @@ class Swint(BaseModel):
     use_relu: bool = True
     drop_prob: float = 0.1
     drop_size: int = 4
-    drop_block: bool = False
-    use_spp: bool = False
-    use_pan: bool = False
+    drop_block: bool = True
+    use_spp: bool = True
+    use_pan: bool = True
 
 class Vision(BaseModel):
-    model_name: str = 'swint-v1'
+    model_name: str = 'swint-v2'
     text_feat_dim: int = 768
     output_dim: int = 768
     hidden_dim: int = 2048
     pretrained: bool = True
     freeze_model: bool = True
-    frozen_stages: int = 6
+    frozen_stages: int = 0
 
     swint: Swint = Swint()
      
@@ -51,7 +51,7 @@ class FuseVision(BaseModel):
 
 class FuseLang(BaseModel):
     hidden_size: int = 768
-    num_attention_heads: int = 12
+    num_attention_heads: int = 8
 
 class FusionConfig(BaseModel):
     visual: FuseVision = FuseVision()
@@ -61,8 +61,8 @@ class FusionConfig(BaseModel):
     num_heads: int = 12
     self_attn: bool = True
 
-    num_layer: int = 4
-    drop: List[float] = [0.1, 0.2, 0.2, 0.3]
+    num_layer: int = 2
+    drop: List[float] = [0.1, 0.2]
 
 class FocalConfig(BaseModel):
     alpha: float = 0.75
@@ -87,7 +87,7 @@ class TokenConfig(BaseModel):
 class ContrasiveConfig(BaseModel):
     softmax_temperature: float = 0.07
 
-    weight: float = 0.1
+    weight: float = 0.01
 
 class PrototypeConfig(BaseModel):
     epsilon = 0.05
@@ -100,9 +100,9 @@ class AlignConfig(BaseModel):
     p: float = 1
     alpha = 0.99
     gamma = 1
-    positive_temperature = 8.5
+    positive_temperature = 10
 
-    weight: float = 0.8
+    weight: float = 1
 
 class Loss(BaseModel):
     focal_loss: FocalConfig = FocalConfig()
@@ -144,7 +144,7 @@ class Config(BaseModel):
     use_arcface_loss: bool = True
     use_token_loss: bool = True
     use_proto_loss: bool = True
-    use_contrasive_loss: bool = True
+    use_contrasive_loss: bool = False
     use_align_loss: bool = True
 
     one_hot: bool = True
