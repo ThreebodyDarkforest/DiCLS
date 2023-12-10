@@ -1,0 +1,105 @@
+align_dim: 256
+batch_size: 32
+config: null
+dataset_type: PlantCLS
+device: cuda:0
+early_stop: '3'
+encoder:
+  lang:
+    agg_token: true
+    emb_dim: 768
+    freeze_model: true
+    model_name: bert-base-uncased
+    model_type: bert
+    output_dim: 128
+    tokenizer: null
+  visual:
+    freeze_model: true
+    frozen_stages: 10
+    hidden_dim: 2048
+    model_name: vit-base
+    output_dim: 768
+    pretrained: true
+    text_feat_dim: 768
+epochs: '50'
+eval:
+  accuracy_on: true
+  avg_precision_on: true
+  f1_score_on: true
+  pr_curve_on: true
+  precision_on: true
+  recall_on: true
+  roc_curve_on: true
+exp_name: exp
+feature_depth: 1
+fuse:
+  drop:
+  - 0.1
+  - 0.2
+  - 0.2
+  - 0.3
+  embed_dim: 768
+  hidden_dim: 768
+  lang:
+    hidden_size: 768
+    num_attention_heads: 12
+  num_heads: 12
+  num_layer: 4
+  self_attn: true
+  visual:
+    dropout: 0.1
+    droppath: 0.3
+    embed_dim: 768
+    num_heads: 8
+    use_van_attn: false
+glob_hidden_dim: 768
+glob_output_dim: 512
+keep: false
+local_hidden_dim: 768
+local_output_dim: 512
+log_level: DEBUG
+loss:
+  align_loss:
+    p: 1
+    weight: 0.8
+  arcface_loss:
+    margin: 0.7
+    scale: 64
+    weight: 0.2
+  contrasive_loss:
+    softmax_temperature: 0.07
+    weight: 0.1
+  focal_loss:
+    alpha: 0.75
+    gamma: 2
+    reduction: mean
+    weight: 50
+  proto_loss:
+    epsilon: 0.05
+    proto_temperature: 0.2
+    sinkhorn_iterations: 3
+    weight: 0.1
+  token_loss:
+    bi_direction: true
+    img_encoder: vit
+    local_temperature: 0.1
+    weight: 0.05
+loss_period: 5
+lr: '0.00002'
+num_class: 6
+one_hot: true
+path: data/plant_dataset
+pred_threshold: 0.5
+prototypes: 128
+save_period: 3
+tensorboard: true
+test: false
+test_period: 1
+tokenizer_max_length: 197
+use_align_loss: true
+use_arcface_loss: true
+use_contrasive_loss: false
+use_proto_loss: true
+use_token_loss: true
+visualize: false
+weight: null
