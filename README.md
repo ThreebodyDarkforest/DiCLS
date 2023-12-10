@@ -36,4 +36,4 @@ python main.py --test --path /path/to/your/data --weight /path/to/your/weight --
 
 Firstly, thanks to my teacher in Computer Vision. I'm sincerely glad to listen to your lectures.
 
-The same thanks to all the supports from my peer students. It's nice to work with all of you.
+The same thanks to all the supports from my peer students and friends. It's nice to work with all of you.
