@@ -8,7 +8,8 @@ from model.utils.logger import log_tensorboard, log_detail, setup_logger
 from argparse import ArgumentParser
 import torch.optim as optim
 from torch.nn import functional as F
-from dataset.utils import create_dataloader, label2caption, get_caption
+from dataset.utils import label2caption, get_caption
+from dataset.dataloader import create_dataloader
 from tqdm import tqdm
 import os
 import logging
@@ -18,37 +19,50 @@ import time
 PATH = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(PATH, 'logs')
 
-def train(cfg, model, dataloader, start_time=None, writer=None, step=None):
+def train(cfg, model, dataloader, idx2label, start_time=None, writer=None, step=None):
     results = {}
 
     mean_loss = None
     for i, data in enumerate(dataloader):
         step[0] += 1
 
-        imgs, labels = data
+        imgs, labels, plains = data
         bz = imgs.size(0)
         
-        ids = torch.nonzero(labels == 1).squeeze().tolist() 
-        infos = {}
-        all_labels = ",".join([label for label in idx2label.values()])
-        captions = get_caption(ids, idx2label, infos)
+        #ids = torch.nonzero(labels == 1).squeeze().tolist() 
+        #infos = {}
+        #all_labels = ",".join([label for label in idx2label.values()])
+        #captions = get_caption(ids, idx2label, infos)
         #captions = ["All:" + all_labels + ",Detect:" + captions[i] + ",Description: green, leaf, disease" for i in range(bz)]
         #captions = ["Detect:" + captions[i] for i in range(bz)]
-        captions = ["All: " + all_labels + "[SEP] Description: green, leaf, disease" for i in range(bz)]
+        #captions = [all_labels + "[SEP] Description: green, leaf, disease" for i in range(bz)]
     
-        with torch.no_grad():
-            tokens = model.tokenizer(
-                captions,
-                return_tensors="pt",
-                truncation=True,
-                padding="max_length",
-                max_length=cfg.tokenizer_max_length,
-            )
+        # with torch.no_grad():
+        #     tokens = model.tokenizer(
+        #         captions,
+        #         return_tensors="pt",
+        #         truncation=True,
+        #         padding="max_length",
+        #         max_length=cfg.tokenizer_max_length,
+        #     )
+
+        # TODO: move this to collect_fn
+        suffix = 'Description: green leaf with disease'
+        #suffix = None
+        tokens, targets = get_caption(model.tokenizer, idx2label, 
+                                      plains, None, suffix, cfg.tokenizer_max_length)
+        targets = torch.Tensor(targets)
+        #print([idx2label[i] for i, k in enumerate(labels[0]) if k])
+        #vocab = {v : k for k, v in model.tokenizer.get_vocab().items()}
+        #sent = [vocab[int(token.numpy())] for token in tokens['input_ids'][0]]
 
         inputs = (imgs.to(device), tokens.to(device))
-        labels = labels.float().to(device)
+        word_targets = targets.float().to(device)
+        targets = labels.float().to(device)
+        
+        #print(sent, labels[0])
 
-        all_loss = model(inputs, labels)
+        all_loss = model(inputs, targets, word_targets)
         
         loss = all_loss['total']
 
@@ -86,36 +100,45 @@ def test(cfg, model, dataloader, idx2label, test=False):
     all_logits, all_targets = [], []
     with torch.no_grad():
         for i, data in enumerate(tqdm(dataloader, 'Testing: ')):
-            imgs, labels = data
+            imgs, labels, plains = data
             bz = imgs.size(0)
             
-            ids = torch.nonzero(labels == 1).squeeze().tolist()
+            # ids = torch.nonzero(labels == 1).squeeze().tolist()
             
             #captions = get_caption(ids, idx2label, infos)
             #captions = [captions[i] for i in range(bz)]
-            captions = ["All: " + ",".join([label for label in idx2label.values()]) + "[SEP] Description: green,leaf,disease"] * bz
+            #captions = ["All: " + ",".join([label for label in idx2label.values()]) + "[SEP] Description: green,leaf,disease"] * bz
 
-            tokens = model.tokenizer(
-                captions,
-                return_tensors="pt",
-                truncation=True,
-                padding="max_length",
-                max_length=cfg.tokenizer_max_length,
-            )
+            suffix = 'Description: green leaf with disease'
+            #suffix = None
+            tokens, targets = get_caption(model.tokenizer, idx2label, 
+                                          plains, None, suffix, cfg.tokenizer_max_length)
+            
+            # tokens = model.tokenizer(
+            #     captions,
+            #     return_tensors="pt",
+            #     truncation=True,
+            #     padding="max_length",
+            #     max_length=cfg.tokenizer_max_length,
+            # )
+
+            targets = torch.Tensor(targets)
 
             inputs = (imgs.to(device), tokens.to(device))
-            labels = labels.long().to(device)
+            labels = labels.long()
 
             outputs, logits, probs = model(inputs)
             #print(labels[0], probs[0])
             #predictions = (probs > cfg.pred_threshold).long()
 
             all_logits.append(probs.detach().cpu().numpy())
-            all_targets.append(labels.detach().cpu().numpy())
+            all_targets.append(labels.detach().numpy())
         
         #print([x.shape for x in all_logits])
         all_logits = np.vstack(all_logits)
         all_targets = np.vstack(all_targets)
+
+        #print(all_logits[0], all_targets[0])
 
         results = evaluate(all_logits, all_targets, cfg.num_class, 
                            cfg.pred_threshold, **cfg.eval.dict())
@@ -141,7 +164,7 @@ if __name__ == '__main__':
     # parser.add_argument('--lr_scheduler', default='cos', help='select your device.')
     parser.add_argument('--loss_period', default=5, help='step intervals to print total loss & lr.')
     parser.add_argument('--test_period', default=1, help='epoch intervals to print detail test results.')
-    parser.add_argument('--save_period', default=3, help='epoch intervals to save model ckpt.')
+    parser.add_argument('--save_period', default=5, help='epoch intervals to save model ckpt.')
 
     parser.add_argument('--keep', action='store_true', help='start training from last checkpoint.')
     parser.add_argument('--visualize', action='store_true', help='visualize training results.') # TODO
@@ -155,6 +178,7 @@ if __name__ == '__main__':
     os.environ['TOKENIZERS_PARALLELISM'] = 'true'
     torch.backends.cudnn.enable = True
     torch.backends.cudnn.benchmark = True
+    torch.manual_seed(3407)
 
     args = parser.parse_args()
     cfg = Config()
@@ -174,11 +198,12 @@ if __name__ == '__main__':
     device = torch.device(cfg.device)
     lr = float(cfg.lr)
     num_epochs = int(cfg.epochs)
+    bz = int(cfg.batch_size)
 
     model = DiCLS(cfg).to(device)
     
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, cfg.epochs)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, num_epochs)
 
     steps, max_acc = [0], 0.
 
@@ -193,19 +218,22 @@ if __name__ == '__main__':
         scheduler.load_state_dict(checkpoint['scheduler'])
         max_acc = checkpoint['max_acc']
 
-    train_dataloader = create_dataloader('PlantCLS', cfg.path, cfg.batch_size, True, dataset_type='train', use_npz=True)
-    val_dataloader = create_dataloader('PlantCLS', cfg.path, cfg.batch_size, True, dataset_type='val', use_npz=True)
+    train_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='train', use_npz=True, label_smooth=0.02, mixup=0.1)
+    val_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='val', use_npz=True)
     if cfg.test:
-        test_dataloader = create_dataloader('PlantCLS', cfg.path, cfg.batch_size, True, dataset_type='test', use_npz=True)
+        test_dataloader = create_dataloader('PlantCLS', cfg.path, bz, True, dataset_type='test', use_npz=True)
 
-    idx2label = train_dataloader.dataset.idx2label
+    if cfg.use_ori_classnames:
+        idx2label = train_dataloader.dataset.idx2label
+    else:
+        idx2label = {i : 'Class' + str(v) for i, v in enumerate(range(6))}
     data_len = len(train_dataloader)
 
     if not cfg.test:
 
         for epoch in range(st_epoch, num_epochs):
             model.train()
-            train_results = train(cfg, model, train_dataloader, start_time, writer=writer, step=steps)
+            train_results = train(cfg, model, train_dataloader, idx2label, start_time, writer=writer, step=steps)
 
             train_results.update({"epoch": epoch + 1})
             log_detail(train_results, 'Train Result')

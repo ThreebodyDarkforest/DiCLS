@@ -7,27 +7,59 @@ from einops import rearrange
 from torch.nn.modules.module import Module
 import math
 
-__all__ = ['FocalLoss', 'ArcfaceLoss', 'TokenLoss', 'ContrasiveLoss', 'PrototypeLoss']
+__all__ = ['FocalLoss', 'ArcfaceLoss', 'TokenLoss', 'ContrasiveLoss', 'PrototypeLoss', 'AlignLoss']
 
 class LossEvaluator(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, cfg) -> None:
         super().__init__()
-        self.args_list = []
-        self.losses_fn = nn.ModuleList()
+        #self.args_list = []
+        self.cfg = cfg
+        self.loss_dict = {}
+        self.losses_fn = nn.ModuleDict()
+        # TODO: init loss module
 
-    def add_loss(self, loss_fn: nn.Module, 
-                 inputs: List[Any] | Tuple[Any], scale: int = 1):
-        self.losses_fn.append(loss_fn)
-        self.args_list.append((inputs, scale))
+        if self.cfg.use_arcface_loss:
+            args_dict = self.cfg.loss.arcface_loss.dict()
+            args_dict['one_hot'] = self.cfg.one_hot
+            
+            self.losses_fn.update({'ArcfaceLoss': ArcfaceLoss(**args_dict)})
+
+        if self.cfg.use_token_loss:
+            args_dict = self.cfg.loss.token_loss.dict()
     
+            # THIS WILL LEAD TO A MEMORY LEAK ON GPU, but I dont know why :(
+
+            self.losses_fn.update({'TokenLoss': TokenLoss(**args_dict)})
+
+        if self.cfg.use_contrasive_loss:
+            args_dict = self.cfg.loss.contrasive_loss.dict()
+
+            self.losses_fn.update({'ContrasiveLoss': ContrasiveLoss(**args_dict)})
+
+        if self.cfg.use_proto_loss:
+            args_dict = self.cfg.loss.proto_loss.dict()
+            
+            self.losses_fn.update({'PrototypeLoss': PrototypeLoss(**args_dict)})
+        
+        if self.cfg.use_align_loss:
+            args_dict = self.cfg.loss.align_loss.dict()
+
+            self.losses_fn.update({'AlignLoss': AlignLoss(**args_dict)})
+        
+        args_dict = self.cfg.loss.focal_loss.dict()
+        args_dict['one_hot'] = self.cfg.one_hot
+        
+        self.losses_fn.update({'FocalLoss': FocalLoss(**args_dict)})
+
+    def add_loss(self, name, inputs, weight):
+        self.loss_dict.update({name : (inputs, weight)})
+
     def forward(self):
         losses = {}
+        for name, (inputs, weight) in self.loss_dict.items():
+            loss = self.losses_fn[name](*inputs) * weight
+            losses.update({name : loss})
         
-        for i, loss_fn in enumerate(self.losses_fn):
-            inputs, scale = self.args_list[i]
-            loss = loss_fn(*inputs) * scale
-            losses.update({loss_fn._get_name() : loss})
-
         loss = [l for l in losses.values()]
         loss = torch.sum(torch.stack(loss))
         losses.update({"total" : loss})
@@ -197,8 +229,8 @@ class TokenLoss(AbstractLoss):
 
         return loss_local
 
-    def forward(self, x):
-        return x
+    #def forward(self, x):
+    #    return x
 
 class ContrasiveLoss(AbstractLoss):
     def __init__(self, softmax_temperature, **kwargs) -> None:
@@ -214,6 +246,59 @@ class ContrasiveLoss(AbstractLoss):
         loss2 = F.cross_entropy(sim2, targets)
 
         return (loss1 + loss2) / 2.
+    
+class AlignLoss(AbstractLoss):
+    def __init__(self, p, alpha, gamma, positive_temperature, **kwargs) -> None:
+        super().__init__()
+        self.p = p
+        self.alpha = alpha
+        self.gamma = gamma
+        self.positive_temperature = positive_temperature
+    
+    def forward(self, word_emb, img_emb, targets, word_attn, mask):
+        bz = word_attn.size(0)
+        length = torch.sum((mask[:, 1:] == 1)) // mask.size(0)
+
+        mask = (mask == 0)[:, 1:]
+        # (bz, 1, hidden_dim) @ (bz, word_num, hidden_dim)
+        sim = (img_emb.unsqueeze(1) @ word_emb.transpose(-1, -2)) / self.p
+        sim = sim.squeeze(1)
+        
+        sim = sim[:, :length]
+        #sim[mask.detach()] = 0
+        sim = torch.sigmoid(sim)
+
+        # with torch.no_grad():
+        #     atten_weights = word_attn.detach()
+        #     word_atten_weights = []
+        #     for i in range(bz):
+        #         atten_weight = atten_weights[i]
+        #         nonzero = atten_weight.nonzero().squeeze()
+        #         low = torch.quantile(atten_weight[nonzero], 0.1)
+        #         high = torch.quantile(atten_weight[nonzero], 0.9)
+        #         atten_weight[nonzero] = atten_weight[nonzero].clip(low, high)
+        #         word_atten_weights.append(atten_weight.clone())
+        #     word_atten_weights = torch.stack(word_atten_weights)
+        
+        # word_atten_weights /= word_atten_weights.sum(dim=1, keepdims=True)
+
+        #print(word_atten_weights[0])
+        #print(sim[0])
+        #print(length)
+
+        loss = F.binary_cross_entropy_with_logits(
+            sim, targets[:, :length], reduction="none")
+        
+        #print(sim[0], targets[0, :length], loss[0])
+        #loss = F.binary_cross_entropy_with_logits(sim, targets)
+        
+        loss[targets[:, :length] == 0] /= self.positive_temperature
+        loss = torch.sum(loss) / bz
+
+        pt = torch.exp(-loss)
+        loss = self.alpha * (1 - pt) ** self.gamma * loss        
+        
+        return loss
 
 class PrototypeLoss(AbstractLoss):
     def __init__(self, epsilon=0.05, sinkhorn_iterations=3, 

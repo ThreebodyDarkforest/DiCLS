@@ -1,7 +1,8 @@
 from model.dicls import DiCLS
 from model.utils.configs import Config
 from model.backbone import GlobalEmbedding
-from dataset.utils import create_dataloader, label2caption, get_caption
+from dataset.utils import label2caption, get_caption
+from dataset.dataloader import create_dataloader
 from dataset.transform import GeneralTransform
 from model.utils.visualizer import vis_grid_attention
 import torch
@@ -37,7 +38,7 @@ if __name__ == '__main__':
 
         txt = ["All:" + ",".join([x for x in idx2label.values()])]
         #txt = ["powdery_mildew"]
-        print(txt)
+        #print(txt)
         txt = model.tokenizer(
             txt,
             return_tensors="pt",
@@ -47,9 +48,10 @@ if __name__ == '__main__':
         )
 
         res = model((img.to(device), txt.to(device)))
-        #vis_attn = res[0]['visual']['last_attn'].squeeze()
-        #vis_attn = vis_attn.view(int(vis_attn.size(0) ** 0.5), int(vis_attn.size(0) ** 0.5))
-        #vis_attn = vis_attn.transpose(-1, -2).detach().cpu().numpy()
-        #vis_grid_attention(args.img, vis_attn)
-        print(res[-1].detach().cpu().numpy())
+        vis_attn = res[1][3].squeeze()
+        vis_attn = vis_attn.view(int(vis_attn.size(0) ** 0.5), int(vis_attn.size(0) ** 0.5))
+        print(vis_attn.detach().cpu().numpy())
+        vis_attn = vis_attn.detach().cpu().numpy()
+        vis_grid_attention(args.img, vis_attn)
+        #print(res[-1].detach().cpu().numpy())
         #print(idx2label[np.argmax(res[-1].detach().cpu().numpy())])

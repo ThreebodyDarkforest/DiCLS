@@ -13,13 +13,15 @@ import os
 import math
 from . import cnn
 from .vits import VisionTransformer, Block
+from .swint import _swin_transformer, SwinTransformerBlockV2, PatchMergingV2
 from .van import Block as VanBlock
-from .models import Mlp
+from .models import Mlp, FPN, LastLevelMaxPool, DropBlock2D, conv_with_kaiming_uniform
 from timm.models.layers import trunc_normal_
+from collections import OrderedDict
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def _vision_backbone(vit, image_size, use_grad_checkpointing=False, ckpt_layer=0, drop_path_rate=0):
+def _vision_backbone_vit(vit, image_size, use_grad_checkpointing=False, ckpt_layer=0, drop_path_rate=0):
     assert vit in ['base', 'large'], "vit parameter must be base or large"
     if vit == 'base':
         vision_width = 768
@@ -34,6 +36,59 @@ def _vision_backbone(vit, image_size, use_grad_checkpointing=False, ckpt_layer=0
                                            drop_path_rate=0.1 or drop_path_rate
                                            )
     return visual_encoder, vision_width
+
+def _vision_backbone_swint(swint, frozen_stages, cfg, **kwargs):
+    assert swint in ['v1', 'v2'], "swint parameter must be base or large"
+    if swint == 'v1':
+        weights = "https://download.pytorch.org/models/swin_s-5e29d889.pth"
+        body = _swin_transformer(
+            patch_size=[4, 4],
+            embed_dim=96,
+            depths=[2, 2, 18, 2],
+            num_heads=[3, 6, 12, 24],
+            window_size=[7, 7],
+            stochastic_depth_prob=0.3,
+            weights=weights,
+            frozen_stages=frozen_stages,
+            **kwargs,
+        )
+
+    elif swint == 'v2':
+        weights = "https://download.pytorch.org/models/swin_v2_s-637d8ceb.pth"
+        body = _swin_transformer(
+            patch_size=[4, 4],
+            embed_dim=96,
+            depths=[2, 2, 18, 2],
+            num_heads=[3, 6, 12, 24],
+            window_size=[8, 8],
+            stochastic_depth_prob=0.3,
+            weights=weights,
+            frozen_stages=frozen_stages,
+            block=SwinTransformerBlockV2,
+            downsample_layer=PatchMergingV2,
+            **kwargs,
+        )
+
+    cfg = cfg.swint
+    in_channels = cfg.in_channels
+    out_channels = cfg.out_channels
+    fpn = FPN(
+        in_channels_list=[
+            in_channels[-4],
+            in_channels[-3],
+            in_channels[-2],
+            in_channels[-1],
+            ],
+        out_channels=out_channels,
+        conv_block=conv_with_kaiming_uniform(cfg.use_relu),
+        top_blocks=LastLevelMaxPool(),
+        drop_block=DropBlock2D(cfg.drop_prob, cfg.drop_size) if cfg.drop_block else None,
+        use_spp=cfg.use_spp,
+        use_pan=cfg.use_pan
+    )
+
+    model = nn.Sequential(OrderedDict([("body", body), ("fpn", fpn)]))
+    return model
 
 def _language_backbone(cfg, model_name, model_type):
     cfg_ = GPT2Config.from_pretrained(model_name) if 'gpt' in model_type else BertConfig.from_pretrained(model_name)
@@ -89,6 +144,7 @@ class ImageEncoder(nn.Module):
                  hidden_dim: int = 2048,
                  pretrained: bool = True,
                  freeze_model: bool = True,
+                 frozen_stages: int = 7,
                  **kwargs
                  ):
         super(ImageEncoder, self).__init__()
@@ -97,6 +153,7 @@ class ImageEncoder(nn.Module):
         self.output_dim = output_dim
         self.text_feat_dim = text_feat_dim
         self.freeze_model = freeze_model
+        self.cfg = cfg
 
         if "vit" in model_name:
             vit_grad_ckpt = False
@@ -104,7 +161,7 @@ class ImageEncoder(nn.Module):
             image_size = 224
 
             vit_name = model_name[4:]
-            self.model, vision_width = _vision_backbone(
+            self.model, vision_width = _vision_backbone_vit(
                 vit_name, image_size, vit_grad_ckpt, vit_ckpt_layer, 0)
 
             self.feature_dim = vision_width
@@ -117,7 +174,7 @@ class ImageEncoder(nn.Module):
 
             # TODO: add some extra network like PAN
 
-        else:
+        elif "resnet" in model_name:
             model_function = getattr(
                 cnn, model_name)
             self.model, self.feature_dim, self.interm_feature_dim = model_function(
@@ -127,8 +184,15 @@ class ImageEncoder(nn.Module):
             # Average pooling
             self.pool = nn.AdaptiveAvgPool2d(output_size=(1, 1))
         
+        elif "swint" in model_name:
+            swint_name = model_name[6:]
+            if not freeze_model:
+                frozen_stages = 0
+            self.model = _vision_backbone_swint(swint_name, frozen_stages, cfg)
+
         if self.freeze_model is True:
             print("Freezing Vision backbone...")
+            if "swint" in model_name: return
             for param in self.model.parameters():
                 param.requires_grad = False
 
@@ -188,6 +252,21 @@ class ImageEncoder(nn.Module):
                 "embedded": img_feat[:, 1:].contiguous(),
                 "last_attn": self.model.blocks[11].attn.attention_map,
             }
+        else:
+            img_feat = self.model(x)
+            bz, embed_dim = img_feat[0].size(0), img_feat[0].size(1)
+            if 'swint' in self.cfg.model_name:
+                glob = nn.functional.interpolate(img_feat[-1], size=[1, 1], mode='bilinear')
+                glob = glob.squeeze(-1).transpose(-1, -2)
+            else:
+                glob = img_feat[-1].squeeze(-1).transpose(-1, -2)
+            loc = img_feat[1].view(bz, embed_dim, -1).transpose(-1, -2)
+            return {
+                "global": glob.view(-1, embed_dim),
+                "local": loc,
+                "hidden": torch.cat((glob, loc), dim=1),
+                "all_hidden": tuple([x.view(bz, embed_dim, -1).transpose(-1, -2) for x in img_feat])
+            }
 
 class LanguageEncoder(nn.Module):
     def __init__(self, cfg, agg_tokens=True,
@@ -214,6 +293,7 @@ class LanguageEncoder(nn.Module):
         self.tokenizer.pad_token = '[PAD]'
 
         self.idx2word = {v : k for k, v in self.tokenizer.get_vocab().items()}
+        # TODO: just freeze 10 blocks
         if self.freeze_model is True:
             print("Freezing Language backbone...")
             for param in self.model.parameters():
@@ -500,13 +580,18 @@ class BiAttnBlock(nn.Module):
 
         self.i2t_head = Mlp(hidden_dim, out_features=embed_dim)
         self.t2i_head = Mlp(hidden_dim, out_features=embed_dim)
+        
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.norm2 = nn.LayerNorm(embed_dim)
 
     def forward(self, inputs):
         visual = inputs["visual"]["hidden"]
         lang = inputs["lang"]["hidden"]
 
-        inputs["visual"]["hidden"] = self.i2t_head(self.t2i_attn(visual, lang))
-        inputs["lang"]["hidden"] = self.t2i_head(self.i2t_attn(lang, visual))
+        inputs["visual"]["hidden"] = self.norm2(self.i2t_head(
+                                     self.norm1(self.t2i_attn(visual, lang))))
+        inputs["lang"]["hidden"] = self.norm2(self.t2i_head(
+                                   self.norm1(self.i2t_attn(lang, visual))))
 
         return inputs
 
